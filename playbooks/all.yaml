@@ -1,0 +1,72 @@
+- name: initializing ceph cluster with cephadm and montoring/logging stack
+  hosts: all
+  become: true
+  gather_facts: yes
+
+  pre_tasks:
+    - name: Load global variables
+      include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+  roles:
+    - role: install_docker
+      tags: ['docker']
+
+    - role: install_prereqs
+      tags: ['prereqs']
+
+    - role: install_cephadm
+      tags: ['installcephadm']
+
+    - role: bootstrap_ceph
+      tags: ['bootstrap']
+
+    - role: add_hosts
+      tags: ['add-host']
+
+    - role: dep-rbd
+      tags: ['blockstorage']
+
+    - role: ec_pools
+      tags: ['erasure-cooding']
+
+    - role: add_mon
+      tags: ['add-mon']
+
+    - role: add_mgr
+      tags: ['add-mgr']
+
+    - role: add_rgw
+      tags: ['add-rgw']
+
+    - role: add_osd
+      tags: ['add-osd']
+
+    - role: add_mds
+      tags: ['add-mds']
+
+    - role: haproxy
+      tags: ['haproxy']
+
+    - role: fluent
+      tags: ['fluent']
+
+    - role: elk
+      tags: ['elk']
+
+    - role: monitoring
+      tags: ['monitoring']
+
+    - role: remove_mon
+      tags: ['rm-mon']
+
+    - role: remove_mgr
+      tags: ['rm-mgr']
+
+    - role: remove_rgw
+      tags: ['rm-rgw']
+
+    - role: remove_osd
+      tags: ['rm-osd']
+
+    - role: remove_mds
+      tags: ['rm-mds']

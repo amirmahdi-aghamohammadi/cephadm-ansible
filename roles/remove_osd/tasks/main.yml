@@ -1,0 +1,99 @@
+---
+
+- name: Load group_vars/all.yml explicitly
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Ensure ceph_host_to_remove is defined
+  assert:
+    that: ceph_host_to_remove is defined and ceph_host_to_remove | length > 0
+    fail_msg: "You must write: -e 'ceph_host_to_remove=osd3'"
+
+- name: Get device list for host
+  shell: ceph orch device ls --format json
+  register: device_list_raw
+  changed_when: false
+
+- name: Parse device list safely
+  set_fact:
+    device_list: "{{ device_list_raw.stdout | default('[]') | from_json }}"
+
+- name: Extract only devices belonging to this host
+  set_fact:
+    host_devices: >-
+      {{
+        device_list
+        | selectattr('name', 'equalto', ceph_host_to_remove)
+        | map(attribute='devices')
+        | first
+      }}
+
+- name: Show list of devices to be removed
+  debug:
+    msg: "{{ host_devices }}"
+
+- name: Collect OSD IDs from devices
+  set_fact:
+    osds_to_remove: >-
+      {{
+        host_devices
+        | selectattr('osd_id','defined')
+        | selectattr('osd_id','!=', None)
+        | map(attribute='osd_id')
+        | list
+      }}
+
+- name: Show OSDs that will be removed
+  debug:
+    var: osds_to_remove
+
+- name: Purge each OSD cleanly
+  shell: "ceph osd purge {{ item }} --yes-i-really-mean-it --force"
+  loop: "{{ osds_to_remove }}"
+  loop_control:
+    label: "OSD {{ item }}"
+  ignore_errors: yes
+
+- name: Zap disks after removing their OSDs
+  shell: "ceph orch device zap {{ ceph_host_to_remove }} {{ item.path }} --force"
+  loop: "{{ host_devices }}"
+  loop_control:
+    label: "{{ item.path }}"
+  when: item.path is defined
+  ignore_errors: yes
+
+- name: Drain host
+  shell: "ceph orch host drain {{ ceph_host_to_remove }} --force"
+  ignore_errors: yes
+
+- name: Wait until host has zero active daemons
+  shell: "ceph orch ps --format json"
+  register: daemon_check
+  changed_when: false
+  until: >
+      (daemon_check.stdout | default('[]') | from_json
+        | selectattr('hostname','equalto', ceph_host_to_remove)
+        | list | length == 0)
+  retries: 40
+  delay: 8
+
+- name: Remove host from Ceph orchestrator
+  shell: "ceph orch host rm {{ ceph_host_to_remove }} --force"
+  ignore_errors: yes
+
+- name: Final cleanup on the removed host
+  shell: |
+    systemctl stop ceph-* || true
+    rm -rf /var/lib/ceph/* /etc/ceph/* || true
+  delegate_to: "{{ ceph_host_to_remove }}"
+  ignore_errors: yes
+
+- name: Final cluster status
+  shell: ceph -s
+  register: final_status
+  changed_when: false
+
+- debug:
+    msg: |
+      Node {{ ceph_host_to_remove }} was successfully and completely removed.
+      Removed OSDs: {{ osds_to_remove }}
+      {{ final_status.stdout }}

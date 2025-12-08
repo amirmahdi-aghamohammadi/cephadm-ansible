@@ -1,0 +1,60 @@
+---
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Ensure ceph_host_to_add and cephfs_name are defined
+  assert:
+    that:
+      - ceph_host_to_add is defined and ceph_host_to_add | length > 0
+      - cephfs_name is defined and cephfs_name | length > 0
+    fail_msg: "Must run with: -e 'ceph_host_to_add=mds1' -e 'cephfs_name=myfs'"
+
+- name: Copy SSH key to new node
+  shell: >
+    cat /etc/ceph/ceph.pub | ssh root@{{ ceph_host_to_add }}
+    "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+  ignore_errors: yes
+
+- name: Add host to cluster if not exists
+  shell: ceph orch host add {{ ceph_host_to_add }} {{ hostvars[ceph_host_to_add].ansible_host | default(ceph_host_to_add) }}
+  register: add_host
+  failed_when: add_host.rc != 0 and 'already exists' not in add_host.stdout
+  ignore_errors: yes
+
+- name: Add mds label to host
+  shell: ceph orch host label add {{ ceph_host_to_add }} mds
+  register: add_label
+  failed_when: add_label.rc != 0 and 'already has label' not in add_label.stdout
+  ignore_errors: yes
+
+- name: Get current mds hostnames for the filesystem
+  shell: ceph orch ps --service-name mds.{{ cephfs_name }} --format json | jq -r '.[].hostname' | sort | tr '\n' ' '
+  register: current_mds_hosts
+  changed_when: false
+
+- name: Build final mds placement list
+  set_fact:
+    final_mds_placement: "{{ (current_mds_hosts.stdout.split() + [ceph_host_to_add]) | unique | sort | join(' ') }}"
+
+- debug:
+    msg: "Final mds placement: {{ final_mds_placement }}"
+
+- name: Apply exact mds placement
+  shell: ceph orch apply mds {{ cephfs_name }} --placement="{{ final_mds_placement }}"
+  register: apply_mds
+
+- name: Wait for all mds daemons to come up
+  shell: ceph orch ps --service-name mds.{{ cephfs_name }} --format json | jq '. | length'
+  register: mds_count
+  until: mds_count.stdout | int == (final_mds_placement.split() | length)
+  retries: 40
+  delay: 8
+  changed_when: false
+
+- name: Success message
+  debug:
+    msg: |
+      Node {{ ceph_host_to_add }} successfully added as mds.
+      Final placement: {{ final_mds_placement }}
+      Total mds daemons: {{ mds_count.stdout }}
+      mds hosts: {{ final_mds_placement }}

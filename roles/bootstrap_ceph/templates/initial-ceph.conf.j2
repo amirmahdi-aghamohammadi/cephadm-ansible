@@ -1,0 +1,21 @@
+[global]
+
+fsid = {{ ceph_fsid | default('') }}
+mon_initial_members = {{ mon_initial_members | default('mon1') }}
+mon_host = {{ mon_ip }}
+
+public_network = {{ public_network }}
+cluster_network = {{ cluster_network }}
+
+osd_crush_chooseleaf_type = 0
+osd_pool_default_erasure_code = {{ ceph_pool_erasure_code }}
+
+log_to_stderr = false
+log_to_syslog = true
+err_to_stderr = true
+debug_osd = 0
+debug_mon = 0
+
+osd_memory_target_autotune = true
+mgr/cephadm/autotune_memory_target_ratio = {{ osd_memory_autotune_ratio }}
+

@@ -1,0 +1,58 @@
+---
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Ensure ceph_host_to_add is defined
+  assert:
+    that: ceph_host_to_add is defined and ceph_host_to_add | length > 0
+    fail_msg: "Must provide -e 'ceph_host_to_add=mgr3'"
+
+- name: Copy SSH key to new node
+  shell: >
+    cat /etc/ceph/ceph.pub | ssh root@{{ ceph_host_to_add }}
+    "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+  ignore_errors: yes
+
+- name: Add host to cluster if not exists
+  shell: ceph orch host add {{ ceph_host_to_add }} {{ hostvars[ceph_host_to_add].ansible_host | default(ceph_host_to_add) }}
+  register: add_host
+  failed_when: add_host.rc != 0 and 'already exists' not in add_host.stdout
+  ignore_errors: yes
+
+- name: Add mgrs label to host
+  shell: ceph orch host label add {{ ceph_host_to_add }} mgrs
+  register: add_label
+  failed_when: add_label.rc != 0 and 'already has label' not in add_label.stdout
+  ignore_errors: yes
+
+- name: Get current mgr hostnames from running daemons
+  shell: ceph orch ps --daemon-type mgr --format json | jq -r '.[].hostname' | sort | tr '\n' ' '
+  register: current_mgr_hosts
+  changed_when: false
+
+- name: Build final mgr placement list
+  set_fact:
+    final_mgr_placement: "{{ (current_mgr_hosts.stdout.split() + [ceph_host_to_add]) | unique | sort | join(' ') }}"
+
+- debug:
+    msg: "Final mgr placement: {{ final_mgr_placement }}"
+
+- name: Apply exact mgr placement (mgr1 mgr2 mgr3)
+  shell: ceph orch apply mgr --placement="{{ final_mgr_placement }}"
+  register: apply_final
+
+- name: Wait for all mgr daemons to come up
+  shell: ceph orch ps --daemon-type mgr --format json | jq '. | length'
+  register: mgr_count
+  until: mgr_count.stdout | int == (final_mgr_placement.split() | length)
+  retries: 40
+  delay: 8
+  changed_when: false
+
+- name: Success message
+  debug:
+    msg: |
+      Node {{ ceph_host_to_add }} successfully added as mgr.
+      Final placement: {{ final_mgr_placement }}
+      Total mgr daemons: {{ mgr_count.stdout }}
+      Active mgr hosts: {{ final_mgr_placement }}

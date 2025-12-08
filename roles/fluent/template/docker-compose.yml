@@ -1,0 +1,11 @@
+version: '3.8'
+
+services:
+  fluent-bit:
+    image: fluent/fluent-bit:2.2
+    container_name: fluent-bit
+    volumes:
+      - ./fluent-bit.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    restart: unless-stopped

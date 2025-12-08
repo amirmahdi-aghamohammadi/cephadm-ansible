@@ -1,0 +1,103 @@
+---
+
+#cephadm-initial
+ceph_release: "18.2.6"
+cephadm_path: "/usr/sbin/cephadm"
+public_network: "192.168.10.0/24"
+cluster_network: "192.168.20.0/24"
+mon_ip: "{{ hostvars['mon1']['ansible_host'] }}"
+initial_config_file: "/etc/ceph/initial-ceph.conf"
+ceph_pool_erasure_code: "k=4 m=2"
+
+
+
+#docker-install-vars
+docker_user: root
+docker_codename: "{{ ansible_lsb.codename | default(ansible_distribution_release | default('focal')) }}"
+docker_arch: "{{ ansible_architecture | default('amd64') }}"
+#docker_arch: amd64
+#docker_codename: jammy
+#use_deb_repo: "{{ ansible_distribution_major_version in ['20', '22'] }}"
+
+
+#prereqs-vars
+prereqs_packages:
+  - python3
+  - systemd
+  - docker.io
+  - chrony
+  - lvm2
+
+time_sync_service: "chrony"
+monitoring_stack: "prometheus-grafana"
+osd_memory_autotune_ratio: 0.7
+
+
+#cephadm-bootstrap
+ceph_host_to_add: mon2
+ceph_label: mons
+ceph_ssh_pubkey_path: "/etc/ceph/ceph.pub"
+ceph_ssh_pubkey_path_on_bootstrap: "/etc/ceph/ceph.pub"
+ceph_bootstrap_node: "mon1"
+
+
+#haproxy-vars
+haproxy_user: root
+haproxy_group: root
+ha_dir: ha
+
+docker_compose_file: "/root/ceph-ansible-project/roles/haproxy/templates/docker-compose.yml"
+haproxy_cfg_src: "/root/ceph-ansible-project/roles/haproxy/templates/haproxy.cfg"
+haproxy_cfg_dest: "{{ ha_dir }}/haproxy.cfg"
+
+
+#fluent-vars
+fluent_user: root
+fluent_group: root
+fluent_dir: /fluent
+
+docker_compose_f_file: "{{ role_path }}/template/docker-compose.yml"
+fluent_bit_conf_src: "{{ role_path }}/template/fluent-bit.conf"
+parsers_conf_src: "{{ role_path }}/template/parsers.conf"
+
+docker_compose_f_dest: "{{ fluent_dir }}/docker-compose.yml"
+fluent_bit_conf_dest: "{{ fluent_dir }}/fluent-bit.conf"
+parsers_conf_dest: "{{ fluent_dir }}/parsers.conf"
+
+
+#ELK stack vars
+elk_user: root
+elk_group: root
+elk_dir: /elk
+
+docker_compose_elk_file: "{{ role_path }}/template/docker-compose.yml"
+logstash_conf_src: "{{ role_path }}/template/logstash.conf"
+docker_compose_dest: "{{ elk_dir }}/docker-compose.yml"
+logstash_conf_dest: "{{ elk_dir }}/logstash.conf"
+
+
+#monitoring-vars
+monitoring_user: root
+monitoring_group: root
+monitoring_dir: /root/monitoring
+
+docker_compose_monit_file: "{{ role_path }}/template/docker-compose.yml"
+prometheus_config_src: "{{ role_path }}/template/prometheus.yml.j2"
+prometheus_config_dest: "{{ monitoring_dir }}/prometheus.yml"
+
+prometheus_targets:
+  - mon1.i4d.ir:9100
+  - mon2.i4d.ir:9100
+  - mon3.i4d.ir:9100
+  - mgr1.i4d.ir:9100
+  - mgr2.i4d.ir:9100
+  - mgr3.i4d.ir:9100
+  - rgw1.i4d.ir:9100
+  - rgw2.i4d.ir:9100
+  - rgw3.i4d.ir:9100
+  - osd1.i4d.ir:9100
+  - osd2.i4d.ir:9100
+  - osd3.i4d.ir:9100
+  - hap1.i4d.ir:9100
+  - hap2.i4d.ir:9100
+  - hap3.i4d.ir:9100

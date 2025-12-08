@@ -1,0 +1,36 @@
+---
+
+- name: ELK directory exists
+  ansible.builtin.file:
+    path: "{{ elk_dir }}"
+    state: directory
+    owner: "{{ elk_user }}"
+    group: "{{ elk_group }}"
+    mode: "0755"
+
+- name: Copy docker-compose.yml to ELK directory
+  ansible.builtin.copy:
+    src: "{{ docker_compose_elk_file }}"
+    dest: "{{ docker_compose_dest }}"
+    owner: "{{ elk_user }}"
+    group: "{{ elk_group }}"
+    mode: "0644"
+
+- name: Copy logstash.conf to ELK directory
+  ansible.builtin.copy:
+    src: "{{ logstash_conf_src }}"
+    dest: "{{ logstash_conf_dest }}"
+    owner: "{{ elk_user }}"
+    group: "{{ elk_group }}"
+    mode: "0644"
+
+- name: Start ELK stack with Docker Compose
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ elk_dir }}"
+  register: compose_result
+  changed_when: "'Creating' in compose_result.stdout or 'Recreating' in compose_result.stdout"
+
+- name: Show Docker Compose output
+  ansible.builtin.debug:
+    var: compose_result.stdout_lines

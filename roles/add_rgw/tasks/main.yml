@@ -1,0 +1,27 @@
+---
+- name: Load group_vars/all.yml explicitly
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Copy SSH key from bootstrap to {{ ceph_host_to_add }} using ssh-copy-id
+  ansible.builtin.shell: cat /etc/ceph/ceph.pub | ssh root@{{ ceph_host_to_add }} "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+  register: ssh_copy_result
+  ignore_errors: yes
+
+- name: Add {{ ceph_host_to_add }} node to Ceph cluster if not already added
+  ansible.builtin.shell: >
+    ceph orch host add {{ ceph_host_to_add }} {{ hostvars[ceph_host_to_add]['ansible_host'] }}
+  register: add_host_result
+  changed_when: "'already exists' not in add_host_result.stdout"
+  ignore_errors: yes
+
+- name: Add label rgws to {{ ceph_host_to_add }} node if missing
+  ansible.builtin.shell: >
+    ceph orch host label add {{ ceph_host_to_add }} rgws
+  register: add_label_result
+  changed_when: "'already has label' not in add_label_result.stdout"
+  ignore_errors: yes
+
+- name: Deploy RGW on {{ ceph_host_to_add }}
+  ansible.builtin.shell: >
+    ceph orch apply rgw rgws --placement="label:rgws"
+#    ceph orch apply rgw rgws  --placement='{{ ceph_host_to_add }}'

@@ -1,0 +1,58 @@
+---
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Ensure ceph_host_to_add is defined
+  assert:
+    that: ceph_host_to_add is defined and ceph_host_to_add | length > 0
+    fail_msg: "You must write: -e 'ceph_host_to_add=mon3'"
+
+- name: Copy SSH key to the new node
+  shell: >
+    cat /etc/ceph/ceph.pub | ssh root@{{ ceph_host_to_add }}
+    "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+  ignore_errors: yes
+
+- name: Add node to the cluster
+  shell: ceph orch host add {{ ceph_host_to_add }} {{ hostvars[ceph_host_to_add].ansible_host | default(ceph_host_to_add) }}
+  register: add_host
+  failed_when: add_host.rc != 0 and 'already exists' not in add_host.stdout
+  ignore_errors: yes
+
+- name: Add label mons
+  shell: ceph orch host label add {{ ceph_host_to_add }} mons
+  register: add_label
+  failed_when: add_label.rc != 0 and 'already has label' not in add_label.stdout
+  ignore_errors: yes
+
+- name: List hostnames of current active mons
+  shell: ceph orch ps --daemon-type mon --format json | jq -r '.[].hostname' | sort | tr '\n' ' '
+  register: current_mon_hosts
+  changed_when: false
+
+- name: Build final placement (mon1 mon2 mon3 ...)
+  set_fact:
+    final_mon_placement: "{{ (current_mon_hosts.stdout.split() + [ceph_host_to_add]) | unique | sort | join(' ') }}"
+
+- debug:
+    msg: "Final placement: {{ final_mon_placement }}"
+
+- name: Apply exact placement for mons (mon1 mon2 mon3)
+  shell: ceph orch apply mon --placement="{{ final_mon_placement }}"
+  register: apply_final
+
+- name: Wait until mon count becomes correct
+  shell: ceph orch ps --daemon-type mon --format json | jq '. | length'
+  register: mon_count
+  until: mon_count.stdout | int == (final_mon_placement.split() | length)
+  retries: 40
+  delay: 8
+  changed_when: false
+
+- name: Final message
+  debug:
+    msg: |
+      Node {{ ceph_host_to_add }} was successfully added.
+      Final placement: {{ final_mon_placement }}
+      Mon count: {{ mon_count.stdout }}
+      Active mons: {{ final_mon_placement }}

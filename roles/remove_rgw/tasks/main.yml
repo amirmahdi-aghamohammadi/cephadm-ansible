@@ -1,0 +1,79 @@
+---
+- name: Load group_vars/all.yml explicitly
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Get list of Ceph hosts
+  shell: "ceph orch host ls --format json"
+  register: ceph_hosts
+  changed_when: false
+
+- name: Fail if host does NOT exist in cluster
+  fail:
+    msg: "Host {{ ceph_host_to_remove }} not found in Ceph cluster! Aborting."
+  when: ceph_host_to_remove not in (ceph_hosts.stdout | default('[]') | from_json | map(attribute='hostname') | list)
+
+- name: Drain host before removing
+  shell: "ceph orch host drain {{ ceph_host_to_remove }} --force"
+  register: drain_result
+  changed_when: "drain_result.rc == 0"
+  failed_when: drain_result.rc != 0 and ('No such host' in (drain_result.stderr|default('')) )
+
+- name: Get cluster daemon list (safe)
+  shell: "ceph orch ps --format json"
+  register: cluster_daemons
+  changed_when: false
+
+- name: Parse cluster_daemons safely to a list
+  set_fact:
+    cluster_daemons_list: "{{ (cluster_daemons.stdout | default('[]')) | from_json }}"
+
+- name: Extract only daemons from this host (hostname field)
+  set_fact:
+    host_daemons: >-
+      {{ cluster_daemons_list
+         | selectattr('hostname','equalto', ceph_host_to_remove)
+         | list }}
+
+- name: Show daemons that will be removed (debug)
+  debug:
+    var: host_daemons
+
+- name: Fail if drain did not touch any daemons and there are still daemons on host
+  fail:
+    msg: "Host {{ ceph_host_to_remove }} still has daemons and drain did not remove anything. Aborting to avoid partial removal. Daemons: {{ host_daemons }}"
+  when:
+    - (host_daemons | length) > 0
+    - drain_result is defined
+    - drain_result.rc != 0
+
+- name: Remove only daemons of this host
+  shell: "ceph orch daemon rm {{ item.daemon_name }} --force"
+  loop: "{{ host_daemons }}"
+  loop_control:
+    label: "{{ item.daemon_name }}"
+  when: host_daemons | length > 0
+  ignore_errors: yes
+
+- name: Wait until host has zero active daemons
+  shell: "ceph orch ps --format json"
+  register: daemons_check
+  changed_when: false
+  until: >
+    {{
+      (daemons_check.stdout | default('[]') | from_json
+        | selectattr('hostname','equalto', ceph_host_to_remove)
+        | list | length == 0)
+    }}
+  retries: 30
+  delay: 10
+
+- name: Remove RGW label (if exists)
+  shell: "ceph orch host label rm {{ ceph_host_to_remove }} rgws"
+  ignore_errors: yes
+
+- name: Remove host from Ceph
+  shell: "ceph orch host rm {{ ceph_host_to_remove }}"
+  register: host_rm_result
+  changed_when: host_rm_result.rc == 0
+  failed_when: host_rm_result.rc != 0 and ('Not allowed to remove' in (host_rm_result.stderr|default('')) )
+  ignore_errors: yes

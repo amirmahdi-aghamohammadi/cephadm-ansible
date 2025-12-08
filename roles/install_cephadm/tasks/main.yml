@@ -1,0 +1,21 @@
+---
+- name: Download cephadm
+  ansible.builtin.get_url:
+    url: "https://download.ceph.com/rpm-{{ ceph_release }}/el9/noarch/cephadm"
+    dest: "/tmp/cephadm"
+    mode: "0755"
+
+- name: Add cephadm repo (optional)
+  ansible.builtin.command: "/tmp/cephadm add-repo --release {{ ceph_release }}"
+  when: use_deb_repo
+
+- name: Install cephadm
+  ansible.builtin.command: "/tmp/cephadm install"
+
+- name: Verify cephadm path
+  ansible.builtin.command: "which cephadm"
+  register: cephadm_path_check
+
+- name: Install ceph-common
+  ansible.builtin.command: "{{ cephadm_path }} install ceph-common"
+  when: cephadm_path_check.rc == 0

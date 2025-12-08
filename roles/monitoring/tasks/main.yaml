@@ -1,0 +1,39 @@
+---
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Ensure monitoring directory exists
+  ansible.builtin.file:
+    path: "{{ monitoring_dir }}"
+    state: directory
+    owner: "{{ monitoring_user }}"
+    group: "{{ monitoring_group }}"
+    mode: "0755"
+
+- name: Template Prometheus config to monitoring directory
+  ansible.builtin.template:
+    src: "{{ prometheus_config_src }}"
+    dest: "{{ prometheus_config_dest }}"
+    owner: "{{ monitoring_user }}"
+    group: "{{ monitoring_group }}"
+    mode: "0644"
+
+
+- name: Copy docker-compose.yml to monitoring directory
+  ansible.builtin.copy:
+    src: "{{ docker_compose_monit_file }}"
+    dest: "{{ monitoring_dir }}/docker-compose.yml"
+    owner: "{{ monitoring_user }}"
+    group: "{{ monitoring_group }}"
+    mode: "0644"
+
+- name: Start monitoring containers with Docker Compose
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ monitoring_dir }}"
+  register: compose_result
+  changed_when: "'Creating' in compose_result.stdout or 'Recreating' in compose_result.stdout"
+
+- name: Show Docker Compose output
+  ansible.builtin.debug:
+    var: compose_result.stdout_lines

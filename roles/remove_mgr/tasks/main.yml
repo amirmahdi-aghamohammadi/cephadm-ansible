@@ -1,0 +1,87 @@
+---
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+  ignore_errors: yes
+
+- name: Ensure ceph_host_to_remove is defined
+  assert:
+    that: ceph_host_to_remove is defined and ceph_host_to_remove | length > 0
+    fail_msg: "Must run with: -e 'ceph_host_to_remove=mgr2'"
+
+- name: Get current active MGR hostnames
+  shell: ceph orch ps --daemon-type mgr --format json | jq -r '.[].hostname' | sort
+  register: current_mgr_hosts
+  changed_when: false
+
+- name: Fail if less than 3 MGRs (prevent quorum loss)
+  fail:
+    msg: |
+      Only {{ current_mgr_hosts.stdout_lines | length }} MGR(s) running.
+      Cannot remove {{ ceph_host_to_remove }} - would leave less than 3 MGRs.
+      Current MGRs: {{ current_mgr_hosts.stdout_lines | join(', ') }}
+  when: current_mgr_hosts.stdout_lines | length <= 2
+
+- name: Fail if target node has no active MGR
+  fail:
+    msg: "Node {{ ceph_host_to_remove }} has no active MGR daemon!"
+  when: ceph_host_to_remove not in current_mgr_hosts.stdout_lines
+
+- name: Build final MGR placement (explicit host list)
+  set_fact:
+    final_mgr_placement: "{{ current_mgr_hosts.stdout_lines | difference([ceph_host_to_remove]) | join(' ') }}"
+
+- debug:
+    msg: "Final MGR placement will be: {{ final_mgr_placement }}"
+
+- name: Apply clean MGR placement (explicit hosts - fixes Squid bug)
+  shell: ceph orch apply mgr --placement="{{ final_mgr_placement }}"
+  register: apply_result
+
+- name: Force MGR failover to clear cache and apply new spec (Squid 19.2.x fix)
+  shell: ceph mgr fail $(ceph mgr dump -f json | jq -r .active_name)
+  ignore_errors: no
+
+- name: Wait for new active MGR after failover
+  shell: ceph mgr dump -f json | jq -r .active_name
+  register: new_active_mgr
+  until: new_active_mgr.stdout is defined and new_active_mgr.stdout | length > 0
+  retries: 20
+  delay: 6
+  changed_when: false
+
+- name: Add _no_schedule label
+  command: ceph orch host label add {{ ceph_host_to_remove }} _no_schedule
+  ignore_errors: yes
+
+- name: Drain all daemons from host
+  command: ceph orch host drain {{ ceph_host_to_remove }} --force
+  ignore_errors: yes
+
+- name: Wait until no daemons remain on host
+  shell: ceph orch ps --hostname {{ ceph_host_to_remove }} --format json | jq '. | length'
+  register: daemons_left
+  until: daemons_left.stdout | int == 0
+  retries: 60
+  delay: 8
+
+- name: Remove host from orchestrator
+  command: ceph orch host rm {{ ceph_host_to_remove }} --force
+  ignore_errors: yes
+
+- name: Remove _no_schedule label (cleanup)
+  command: ceph orch host label rm {{ ceph_host_to_remove }} _no_schedule
+  ignore_errors: yes
+
+- name: Final cluster status
+  shell: |
+    echo "=== Final Ceph Status ==="
+    ceph -s
+    echo "=== Final MGR placement ==="
+    ceph orch ls mgr --export | grep -A5 placement
+  register: final_status
+
+- debug:
+    msg: |
+      SUCCESS: Node {{ ceph_host_to_remove }} completely removed as MGR.
+      Remaining MGR hosts: {{ final_mgr_placement }}
+      {{ final_status.stdout }}

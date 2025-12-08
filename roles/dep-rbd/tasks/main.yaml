@@ -1,0 +1,65 @@
+---
+
+- name: EC profile
+  shell: cephadm shell -- ceph osd erasure-code-profile set ec-42 k=4 m=2 crush-failure-domain=host plugin=jerasure technique=reed_sol_van
+  run_once: true
+  ignore_errors: yes
+
+- name: EC crush rule
+  shell: cephadm shell -- ceph osd crush rule create-erasure ec-42-rule ec-42
+  run_once: true
+  ignore_errors: yes
+
+- name: pool rbd
+  shell: cephadm shell -- ceph osd pool create rbd 32 32 replicated
+  run_once: true
+  ignore_errors: yes
+
+- name: application rbd on rbd
+  shell: cephadm shell -- ceph osd pool application enable rbd rbd --yes-i-really-mean-it
+  run_once: true
+  ignore_errors: yes
+
+- name: only this one init is needed!
+  shell: cephadm shell -- rbd pool init rbd --force
+  run_once: true
+  ignore_errors: yes
+
+- name: EC data pool
+  shell: cephadm shell -- ceph osd pool create rbd-ec-data 64 64 erasure ec-42
+  run_once: true
+  ignore_errors: yes
+
+- name: application rbd on EC data pool
+  shell: cephadm shell -- ceph osd pool application enable rbd-ec-data rbd --yes-i-really-mean-it
+  run_once: true
+  ignore_errors: yes
+
+- name: allow_ec_overwrites
+  shell: cephadm shell -- ceph osd pool set rbd-ec-data allow_ec_overwrites true
+  run_once: true
+  ignore_errors: yes
+
+- name: enable data-pool feature
+  shell: cephadm shell -- ceph config set client rbd_default_features 191
+  run_once: true
+
+- name: default data pool = EC
+  shell: cephadm shell -- ceph config set client rbd_default_data_pool rbd-ec-data
+  run_once: true
+
+- name: create actual disk
+  shell: rbd create --size 2G final-disk --no-progress
+  run_once: true
+
+- name: final proof
+  shell: rbd info final-disk
+  register: proof
+  run_once: true
+
+- name: summary
+  debug:
+    msg: |
+      It's done
+      data_pool: {{ proof.stdout | regex_search('data_pool: .*') }}
+      features:  {{ proof.stdout | regex_search('features: .*') }}

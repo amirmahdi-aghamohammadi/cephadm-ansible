@@ -1,0 +1,43 @@
+---
+
+- name: Create production EC profile k=4 m=2
+  shell: cephadm shell -- ceph osd erasure-code-profile set ec-42 k=4 m=2 crush-failure-domain=host plugin=jerasure technique=reed_sol_van
+  run_once: true
+  ignore_errors: yes
+
+- name: Create EC crush rule
+  shell: cephadm shell -- ceph osd crush rule create-erasure ec-42-rule ec-42
+  run_once: true
+  ignore_errors: yes
+
+- name: Create RBD EC data pool (64 PG — suitable for 6 OSDs)
+  shell: cephadm shell -- ceph osd pool create rbd-ec-data 64 64 erasure ec-42
+  run_once: true
+  ignore_errors: yes
+
+- name: Allow EC overwrites (mandatory!)
+  shell: cephadm shell -- ceph osd pool set rbd-ec-data allow_ec_overwrites true
+  run_once: true
+
+- name: Enable RBD application
+  shell: cephadm shell -- ceph osd pool application enable rbd-ec-data rbd
+  run_once: true
+
+- name: Create RGW EC data pool (64 PG — suitable for small clusters)
+  shell: cephadm shell -- ceph osd pool create rgw-ec-data 64 64 erasure ec-42
+  run_once: true
+  ignore_errors: yes
+
+- name: Enable RGW application
+  shell: cephadm shell -- ceph osd pool application enable rgw-ec-data rgw
+  run_once: true
+  ignore_errors: yes
+
+- name: Set default RBD data pool = EC
+  shell: cephadm shell -- ceph config set client rbd_default_data_pool rbd-ec-data
+  run_once: true
+
+#- name: Set default RGW data pool (optional but clean)
+#  shell: cephadm shell -- ceph config set global rgw_default_data_pool rgw-ec-data
+#  run_once: true
+#  ignore_errors: yes

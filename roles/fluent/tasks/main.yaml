@@ -1,0 +1,45 @@
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Ensure Fluent directory exists
+  ansible.builtin.file:
+    path: "{{ fluent_dir }}"
+    state: directory
+    owner: "{{ fluent_user }}"
+    group: "{{ fluent_group }}"
+    mode: "0755"
+
+- name: Copy docker-compose.yml to Fluent directory
+  ansible.builtin.copy:
+    src: "{{ docker_compose_f_file }}"
+    dest: "{{ docker_compose_f_dest }}"
+    owner: "{{ fluent_user }}"
+    group: "{{ fluent_group }}"
+    mode: "0644"
+
+- name: Copy fluent-bit.conf to Fluent directory
+  ansible.builtin.copy:
+    src: "{{ fluent_bit_conf_src }}"
+    dest: "{{ fluent_bit_conf_dest }}"
+    owner: "{{ fluent_user }}"
+    group: "{{ fluent_group }}"
+    mode: "0644"
+
+- name: Copy parsers.conf to Fluent directory
+  ansible.builtin.copy:
+    src: "{{ parsers_conf_src }}"
+    dest: "{{ parsers_conf_dest }}"
+    owner: "{{ fluent_user }}"
+    group: "{{ fluent_group }}"
+    mode: "0644"
+
+- name: Start Fluent Bit container with Docker Compose
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ fluent_dir }}"
+  register: compose_result
+  changed_when: "'Creating' in compose_result.stdout or 'Recreating' in compose_result.stdout"
+
+- name: Show Docker Compose output
+  ansible.builtin.debug:
+    var: compose_result.stdout_lines

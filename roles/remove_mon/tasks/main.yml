@@ -1,0 +1,112 @@
+---
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+  ignore_errors: yes
+
+- name: Ensure ceph_host_to_remove is defined
+  assert:
+    that: ceph_host_to_remove is defined and ceph_host_to_remove | length > 0
+    fail_msg: "You must write: -e 'ceph_host_to_remove=mon3'"
+
+- name: Initial health check (at least able to talk to cluster)
+  shell: ceph -s
+  register: health_check
+  ignore_errors: yes
+
+- name: Current number of active mons
+  shell: ceph orch ps --daemon-type mon --format json | jq '. | length'
+  register: current_mon_count
+  changed_when: false
+
+- name: If only 1 or 2 mons exist → do not allow removal (quorum will break)
+  fail:
+    msg: |
+      You currently have only {{ current_mon_count.stdout }} mons!
+      Removing {{ ceph_host_to_remove }} will break quorum.
+      You must have at least 3 mons before removing one.
+  when: current_mon_count.stdout | int <= 2
+
+- name: Exact list of hostnames of active mons
+  shell: ceph orch ps --daemon-type mon --format json | jq -r '.[].hostname' | sort
+  register: active_mon_hosts
+  changed_when: false
+
+- name: Error if target node has no active mon
+  fail:
+    msg: "Node {{ ceph_host_to_remove }} currently has no active mon!"
+  when: ceph_host_to_remove not in active_mon_hosts.stdout_lines
+
+- name: Build list of remaining mons
+  set_fact:
+    remaining_mon_hosts: "{{ active_mon_hosts.stdout_lines | difference([ceph_host_to_remove]) | list }}"
+
+- name: Apply clean mon spec with remaining count (this removes HEALTH_WARN forever)
+  shell: ceph orch apply mon --placement="count:{{ remaining_mon_hosts | length }}"
+  register: apply_clean_spec
+
+- pause:
+    seconds: 15
+
+- name: Remove mon auth key (if exists)
+  command: ceph auth del mon.{{ ceph_host_to_remove }}
+  ignore_errors: yes
+
+- name: Remove mon from monmap
+  command: ceph mon remove {{ ceph_host_to_remove }}
+  ignore_errors: yes
+
+- name: Stop and disable mon service on node
+  shell: systemctl stop ceph-mon@{{ ceph_host_to_remove }} || true
+  delegate_to: "{{ ceph_host_to_remove }}"
+  ignore_errors: yes
+
+- name: Remove mon data directory
+  file:
+    path: /var/lib/ceph/mon/ceph-{{ ceph_host_to_remove }}
+    state: absent
+  delegate_to: "{{ ceph_host_to_remove }}"
+  ignore_errors: yes
+
+- name: Drain all daemons from node
+  command: ceph orch host drain {{ ceph_host_to_remove }} --force
+  ignore_errors: yes
+
+- name: Wait until no daemon remains on host
+  shell: ceph orch ps --hostname {{ ceph_host_to_remove }} --format json | jq '. | length'
+  register: remaining_daemons
+  until: remaining_daemons.stdout | int == 0
+  retries: 60
+  delay: 8
+  ignore_errors: yes
+
+- name: Completely remove host from orchestrator
+  command: ceph orch host rm {{ ceph_host_to_remove }} --force
+  ignore_errors: yes
+
+- name: Fully clean Ceph on removed node
+  shell: |
+    systemctl stop ceph-* || true
+    systemctl disable ceph.target || true
+    rm -rf /var/lib/ceph/* /etc/ceph/ceph.* || true
+  delegate_to: "{{ ceph_host_to_remove }}"
+  ignore_errors: yes
+
+- name: Final status of cluster
+  shell: |
+    echo "=== Ceph Status ==="
+    ceph -s
+    echo "=== Hosts in cluster ==="
+    ceph orch host ls
+  register: final_status
+
+- debug:
+    msg: |
+      Node {{ ceph_host_to_remove }} was successfully and completely removed.
+      Remaining mon count: {{ remaining_mon_hosts | length }}
+      Active mons: {{ remaining_mon_hosts | join(', ') }}
+      {{ final_status.stdout }}
+
+- name: Clear stray daemon warnings by failing active mgr (Squid 19.2.x)
+  shell: ceph mgr fail $(ceph mgr dump -f json | jq -r .active_name)
+  when: current_mon_count.stdout | int > 2
+  ignore_errors: no

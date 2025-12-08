@@ -1,0 +1,28 @@
+---
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Gather facts from nodes
+  setup:
+
+- name: Check and install prerequisites
+  block:
+    - name: Check if prerequisites are installed
+      shell: "dpkg -l | grep {{ item }} || true"
+      register: prereq_check
+      changed_when: false
+      loop: "{{ prereqs_packages }}"
+
+    - name: Install missing prerequisites
+      ansible.builtin.package:
+        name: "{{ item.item }}"
+        state: present
+      when: item.stdout == ""
+      loop: "{{ prereq_check.results }}"
+
+    - name: Ensure time sync service is enabled
+      ansible.builtin.service:
+        name: "{{ time_sync_service }}"
+        state: started
+        enabled: yes
+  become: true

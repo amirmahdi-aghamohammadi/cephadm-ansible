@@ -1,0 +1,18 @@
+---
+
+- name: Create initial config file
+  ansible.builtin.template:
+    src: initial-ceph.conf.j2
+    dest: "{{ initial_config_file }}"
+
+- name: Bootstrap Ceph cluster
+  ansible.builtin.shell: |
+    {{ cephadm_path }} bootstrap --mon-ip {{ mon_ip }} \
+      --cluster-network {{ cluster_network }} \
+      --config {{ initial_config_file }} \
+      --log-to-file
+
+- name: Enable OSD memory autotuning
+  ansible.builtin.shell: |
+    ceph config set mgr mgr/cephadm/autotune_memory_target_ratio {{ osd_memory_autotune_ratio }}
+    ceph config set osd osd_memory_target_autotune true

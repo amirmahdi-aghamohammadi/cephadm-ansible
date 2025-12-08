@@ -1,0 +1,116 @@
+---
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+  ignore_errors: yes
+
+- name: Ensure ceph_host_to_remove and cephfs_name are defined
+  assert:
+    that:
+      - ceph_host_to_remove is defined and ceph_host_to_remove | length > 0
+      - cephfs_name is defined and cephfs_name | length > 0
+    fail_msg: "Must run with: -e 'ceph_host_to_remove=mds2' -e 'cephfs_name=myfs'"
+
+- name: Initial health check (at least able to talk to cluster)
+  shell: ceph -s
+  register: health_check
+  ignore_errors: yes
+
+- name: Get current MDS hostnames for the filesystem
+  shell: ceph orch ps --service-name mds.{{ cephfs_name }} --format json | jq -r '.[].hostname' | sort
+  register: current_mds_hosts
+  changed_when: false
+
+- name: Fail if less than or equal to 1 MDS (prevent FS breakdown)
+  fail:
+    msg: |
+      Only {{ current_mds_hosts.stdout_lines | length }} MDS(s) running for {{ cephfs_name }}.
+      Cannot remove {{ ceph_host_to_remove }} - would leave {{ current_mds_hosts.stdout_lines | length - 1 }} MDS(s).
+      Current MDS hosts: {{ current_mds_hosts.stdout_lines | join(', ') }}
+  when: current_mds_hosts.stdout_lines | length <= 1
+
+- name: Fail if target node has no active MDS
+  fail:
+    msg: "Node {{ ceph_host_to_remove }} has no MDS daemon for {{ cephfs_name }}!"
+  when: ceph_host_to_remove not in current_mds_hosts.stdout_lines
+
+- name: Build final MDS placement (explicit host list)
+  set_fact:
+    final_mds_placement: "{{ current_mds_hosts.stdout_lines | difference([ceph_host_to_remove]) | join(' ') }}"
+
+- debug:
+    msg: "Final MDS placement will be: {{ final_mds_placement }}"
+
+- name: Apply clean MDS placement (explicit hosts)
+  shell: ceph orch apply mds {{ cephfs_name }} --placement="{{ final_mds_placement }}"
+  register: apply_result
+
+- name: Wait for placement to apply and daemon to be removed
+  shell: ceph orch ps --service-name mds.{{ cephfs_name }} --format json | jq '. | length'
+  register: mds_count
+  until: mds_count.stdout | int == (final_mds_placement.split() | length)
+  retries: 40
+  delay: 8
+  changed_when: false
+
+- name: Add _no_schedule label
+  command: ceph orch host label add {{ ceph_host_to_remove }} _no_schedule
+  ignore_errors: yes
+
+- name: Drain all daemons from host
+  command: ceph orch host drain {{ ceph_host_to_remove }} --force
+  ignore_errors: yes
+
+- name: Wait until no daemons remain on host
+  shell: ceph orch ps --hostname {{ ceph_host_to_remove }} --format json | jq '. | length'
+  register: daemons_left
+  until: daemons_left.stdout | int == 0
+  retries: 60
+  delay: 8
+  ignore_errors: yes
+
+- name: Remove host from orchestrator
+  command: ceph orch host rm {{ ceph_host_to_remove }} --force
+  ignore_errors: yes
+
+- name: Remove _no_schedule label (cleanup)
+  command: ceph orch host label rm {{ ceph_host_to_remove }} _no_schedule
+  ignore_errors: yes
+
+- name: Remove mds label (if exists)
+  shell: ceph orch host label rm {{ ceph_host_to_remove }} mds
+  ignore_errors: yes
+
+- name: Stop and disable MDS service on node (if any remnants)
+  shell: systemctl stop ceph-mds@* || true
+  delegate_to: "{{ ceph_host_to_remove }}"
+  ignore_errors: yes
+
+- name: Remove MDS data directory
+  file:
+    path: /var/lib/ceph/mds/ceph-{{ cephfs_name }}-*
+    state: absent
+  delegate_to: "{{ ceph_host_to_remove }}"
+  ignore_errors: yes
+
+- name: Fully clean Ceph on removed node
+  shell: |
+    systemctl stop ceph-* || true
+    systemctl disable ceph.target || true
+    rm -rf /var/lib/ceph/* /etc/ceph/ceph.* || true
+  delegate_to: "{{ ceph_host_to_remove }}"
+  ignore_errors: yes
+
+- name: Final cluster status for MDS
+  shell: |
+    echo "=== CephFS Status for {{ cephfs_name }} ==="
+    ceph fs status {{ cephfs_name }}
+    echo "=== Hosts in cluster ==="
+    ceph orch host ls
+  register: final_status
+
+- debug:
+    msg: |
+      SUCCESS: Node {{ ceph_host_to_remove }} completely removed as MDS for {{ cephfs_name }}.
+      Remaining MDS hosts: {{ final_mds_placement }}
+      Final MDS count: {{ mds_count.stdout }}
+      {{ final_status.stdout }}

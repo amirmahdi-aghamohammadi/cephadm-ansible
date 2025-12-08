@@ -1,0 +1,38 @@
+---
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Ensure HA directory exists
+  ansible.builtin.file:
+    path: "{{ ha_dir }}"
+    state: directory
+    owner: "{{ haproxy_user }}"
+    group: "{{ haproxy_group }}"
+    mode: "0755"
+
+- name: Copy HAProxy config to HA directory
+  ansible.builtin.copy:
+    src: "{{ haproxy_cfg_src }}"
+    dest: "{{ ha_dir }}/haproxy.cfg"
+    owner: "{{ haproxy_user }}"
+    group: "{{ haproxy_group }}"
+    mode: "0644"
+
+- name: Copy docker-compose.yml to HA directory
+  ansible.builtin.copy:
+    src: "{{ docker_compose_file }}"
+    dest: "{{ ha_dir }}/docker-compose.yml"
+    owner: "{{ haproxy_user }}"
+    group: "{{ haproxy_group }}"
+    mode: "0644"
+
+- name: Start HAProxy container with Docker Compose
+  ansible.builtin.command:
+    cmd: docker compose up -d
+    chdir: "{{ ha_dir }}"
+  register: compose_result
+  changed_when: "'Creating' in compose_result.stdout or 'Recreating' in compose_result.stdout"
+
+- name: Show Docker Compose output
+  ansible.builtin.debug:
+    var: compose_result.stdout_lines
