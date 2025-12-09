@@ -1,4 +1,8 @@
 ---
+
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
 - name: Download cephadm
   ansible.builtin.get_url:
     url: "https://download.ceph.com/rpm-{{ ceph_release }}/el9/noarch/cephadm"

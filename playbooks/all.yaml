@@ -16,57 +16,76 @@
 
     - role: install_cephadm
       tags: ['installcephadm']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: bootstrap_ceph
       tags: ['bootstrap']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: add_hosts
       tags: ['add-host']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: dep-rbd
       tags: ['blockstorage']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: ec_pools
       tags: ['erasure-cooding']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: add_mon
       tags: ['add-mon']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: add_mgr
       tags: ['add-mgr']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: add_rgw
       tags: ['add-rgw']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: add_osd
       tags: ['add-osd']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: add_mds
       tags: ['add-mds']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: haproxy
       tags: ['haproxy']
+      when: inventory_hostname in groups['haproxy']
 
     - role: fluent
       tags: ['fluent']
+      when: inventory_hostname in groups['haproxy']
 
     - role: elk
       tags: ['elk']
+      when: inventory_hostname in groups['monitoring']
 
     - role: monitoring
       tags: ['monitoring']
+      when: inventory_hostname in groups['monitoring']
 
     - role: remove_mon
       tags: ['rm-mon']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: remove_mgr
       tags: ['rm-mgr']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: remove_rgw
       tags: ['rm-rgw']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: remove_osd
       tags: ['rm-osd']
+      when: inventory_hostname in groups['bootstrap']
 
     - role: remove_mds
       tags: ['rm-mds']
+      when: inventory_hostname in groups['bootstrap']

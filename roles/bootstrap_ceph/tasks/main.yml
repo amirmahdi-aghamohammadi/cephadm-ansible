@@ -1,5 +1,8 @@
 ---
 
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
 - name: Create initial config file
   ansible.builtin.template:
     src: initial-ceph.conf.j2

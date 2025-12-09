@@ -1,6 +1,0 @@
-- hosts: all
-  become: true
-  gather_facts: yes
-  roles:
-    - install_docker
-    - install_prereqs

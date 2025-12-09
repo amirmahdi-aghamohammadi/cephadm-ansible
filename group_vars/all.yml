@@ -8,6 +8,24 @@ cluster_network: "192.168.20.0/24"
 mon_ip: "{{ hostvars['mon1']['ansible_host'] }}"
 initial_config_file: "/etc/ceph/initial-ceph.conf"
 ceph_pool_erasure_code: "k=4 m=2"
+use_deb_repo: "{{ ansible_distribution_major_version in ['20', '22'] }}"
+
+
+
+#EC
+ec_profile_name: "ec-42"
+ec_k: 4
+ec_m: 2
+ec_failure_domain: "host"
+ec_plugin: "jerasure"
+ec_technique: "reed_sol_van"
+ec_crush_rule: "ec-42-rule"
+rbd_ec_pool: "rbd-ec-data"
+rbd_ec_pg: 64
+enable_rbd_ec_default: true
+rgw_ec_pool: "rgw-ec-data"
+rgw_ec_pg: 64
+enable_rgw_ec_default: false
 
 
 
@@ -15,9 +33,6 @@ ceph_pool_erasure_code: "k=4 m=2"
 docker_user: root
 docker_codename: "{{ ansible_lsb.codename | default(ansible_distribution_release | default('focal')) }}"
 docker_arch: "{{ ansible_architecture | default('amd64') }}"
-#docker_arch: amd64
-#docker_codename: jammy
-#use_deb_repo: "{{ ansible_distribution_major_version in ['20', '22'] }}"
 
 
 #prereqs-vars

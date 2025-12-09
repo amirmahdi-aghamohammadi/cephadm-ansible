@@ -1,43 +1,66 @@
 ---
 
-- name: Create production EC profile k=4 m=2
-  shell: cephadm shell -- ceph osd erasure-code-profile set ec-42 k=4 m=2 crush-failure-domain=host plugin=jerasure technique=reed_sol_van
+- name: Load group_vars
+  include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
+
+- name: Create EC profile
+  shell: >
+    cephadm shell -- ceph osd erasure-code-profile set {{ ec_profile_name }}
+    k={{ ec_k }}
+    m={{ ec_m }}
+    crush-failure-domain={{ ec_failure_domain }}
+    plugin={{ ec_plugin }}
+    technique={{ ec_technique }}
   run_once: true
   ignore_errors: yes
 
 - name: Create EC crush rule
-  shell: cephadm shell -- ceph osd crush rule create-erasure ec-42-rule ec-42
+  shell: >
+    cephadm shell -- ceph osd crush rule create-erasure
+    {{ ec_crush_rule }} {{ ec_profile_name }}
   run_once: true
   ignore_errors: yes
 
-- name: Create RBD EC data pool (64 PG — suitable for 6 OSDs)
-  shell: cephadm shell -- ceph osd pool create rbd-ec-data 64 64 erasure ec-42
+- name: Create RBD EC data pool
+  shell: >
+    cephadm shell -- ceph osd pool create
+    {{ rbd_ec_pool }} {{ rbd_ec_pg }} {{ rbd_ec_pg }}
+    erasure {{ ec_profile_name }}
   run_once: true
+  when: rbd_ec_pool is defined
   ignore_errors: yes
 
-- name: Allow EC overwrites (mandatory!)
-  shell: cephadm shell -- ceph osd pool set rbd-ec-data allow_ec_overwrites true
+- name: Allow EC overwrites (RBD)
+  shell: cephadm shell -- ceph osd pool set {{ rbd_ec_pool }} allow_ec_overwrites true
   run_once: true
+  when: rbd_ec_pool is defined
 
 - name: Enable RBD application
-  shell: cephadm shell -- ceph osd pool application enable rbd-ec-data rbd
+  shell: cephadm shell -- ceph osd pool application enable {{ rbd_ec_pool }} rbd
   run_once: true
+  when: rbd_ec_pool is defined
 
-- name: Create RGW EC data pool (64 PG — suitable for small clusters)
-  shell: cephadm shell -- ceph osd pool create rgw-ec-data 64 64 erasure ec-42
+- name: Set default RBD EC data pool
+  shell: cephadm shell -- ceph config set client rbd_default_data_pool {{ rbd_ec_pool }}
   run_once: true
+  when: enable_rbd_ec_default | bool
+
+- name: Create RGW EC data pool
+  shell: >
+    cephadm shell -- ceph osd pool create
+    {{ rgw_ec_pool }} {{ rgw_ec_pg }} {{ rgw_ec_pg }}
+    erasure {{ ec_profile_name }}
+  run_once: true
+  when: rgw_ec_pool is defined
   ignore_errors: yes
 
 - name: Enable RGW application
-  shell: cephadm shell -- ceph osd pool application enable rgw-ec-data rgw
+  shell: cephadm shell -- ceph osd pool application enable {{ rgw_ec_pool }} rgw
   run_once: true
+  when: rgw_ec_pool is defined
   ignore_errors: yes
 
-- name: Set default RBD data pool = EC
-  shell: cephadm shell -- ceph config set client rbd_default_data_pool rbd-ec-data
-  run_once: true
-
-#- name: Set default RGW data pool (optional but clean)
-#  shell: cephadm shell -- ceph config set global rgw_default_data_pool rgw-ec-data
+#- name: Set default RGW EC data pool
+#  shell: cephadm shell -- ceph config set global rgw_default_data_pool {{ rgw_ec_pool }}
 #  run_once: true
-#  ignore_errors: yes
+#  when: enable_rgw_ec_default | bool
