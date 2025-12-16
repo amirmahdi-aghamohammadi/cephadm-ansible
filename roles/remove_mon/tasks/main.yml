@@ -1,7 +1,7 @@
 ---
 - name: Load group_vars
   include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Ensure ceph_host_to_remove is defined
   assert:
@@ -11,7 +11,7 @@
 - name: Initial health check (at least able to talk to cluster)
   shell: ceph -s
   register: health_check
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Current number of active mons
   shell: ceph orch ps --daemon-type mon --format json | jq '. | length'
@@ -49,27 +49,27 @@
 
 - name: Remove mon auth key (if exists)
   command: ceph auth del mon.{{ ceph_host_to_remove }}
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Remove mon from monmap
   command: ceph mon remove {{ ceph_host_to_remove }}
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Stop and disable mon service on node
   shell: systemctl stop ceph-mon@{{ ceph_host_to_remove }} || true
   delegate_to: "{{ ceph_host_to_remove }}"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Remove mon data directory
   file:
     path: /var/lib/ceph/mon/ceph-{{ ceph_host_to_remove }}
     state: absent
   delegate_to: "{{ ceph_host_to_remove }}"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Drain all daemons from node
   command: ceph orch host drain {{ ceph_host_to_remove }} --force
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Wait until no daemon remains on host
   shell: ceph orch ps --hostname {{ ceph_host_to_remove }} --format json | jq '. | length'
@@ -77,11 +77,11 @@
   until: remaining_daemons.stdout | int == 0
   retries: 60
   delay: 8
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Completely remove host from orchestrator
   command: ceph orch host rm {{ ceph_host_to_remove }} --force
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Fully clean Ceph on removed node
   shell: |
@@ -89,7 +89,7 @@
     systemctl disable ceph.target || true
     rm -rf /var/lib/ceph/* /etc/ceph/ceph.* || true
   delegate_to: "{{ ceph_host_to_remove }}"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Final status of cluster
   shell: |
