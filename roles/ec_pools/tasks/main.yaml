@@ -12,7 +12,7 @@
     plugin={{ ec_plugin }}
     technique={{ ec_technique }}
   run_once: true
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Create EC crush rule
   shell: >
@@ -28,7 +28,7 @@
     erasure {{ ec_profile_name }}
   run_once: true
   when: rbd_ec_pool is defined
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Allow EC overwrites (RBD)
   shell: cephadm shell -- ceph osd pool set {{ rbd_ec_pool }} allow_ec_overwrites true
@@ -52,13 +52,13 @@
     erasure {{ ec_profile_name }}
   run_once: true
   when: rgw_ec_pool is defined
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Enable RGW application
   shell: cephadm shell -- ceph osd pool application enable {{ rgw_ec_pool }} rgw
   run_once: true
   when: rgw_ec_pool is defined
-  ignore_errors: yes
+  ignore_errors: no
 
 #- name: Set default RGW EC data pool
 #  shell: cephadm shell -- ceph config set global rgw_default_data_pool {{ rgw_ec_pool }}
