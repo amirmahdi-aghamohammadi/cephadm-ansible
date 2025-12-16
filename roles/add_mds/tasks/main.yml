@@ -13,19 +13,19 @@
   shell: >
     cat /etc/ceph/ceph.pub | ssh root@{{ ceph_host_to_add }}
     "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Add host to cluster if not exists
   shell: ceph orch host add {{ ceph_host_to_add }} {{ hostvars[ceph_host_to_add].ansible_host | default(ceph_host_to_add) }}
   register: add_host
   failed_when: add_host.rc != 0 and 'already exists' not in add_host.stdout
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Add mds label to host
   shell: ceph orch host label add {{ ceph_host_to_add }} mds
   register: add_label
   failed_when: add_label.rc != 0 and 'already has label' not in add_label.stdout
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Get current mds hostnames for the filesystem
   shell: ceph orch ps --service-name mds.{{ cephfs_name }} --format json | jq -r '.[].hostname' | sort | tr '\n' ' '
