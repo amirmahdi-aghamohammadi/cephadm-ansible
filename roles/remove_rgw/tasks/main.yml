@@ -52,7 +52,7 @@
   loop_control:
     label: "{{ item.daemon_name }}"
   when: host_daemons | length > 0
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Wait until host has zero active daemons
   shell: "ceph orch ps --format json"
@@ -69,11 +69,11 @@
 
 - name: Remove RGW label (if exists)
   shell: "ceph orch host label rm {{ ceph_host_to_remove }} rgws"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Remove host from Ceph
   shell: "ceph orch host rm {{ ceph_host_to_remove }}"
   register: host_rm_result
   changed_when: host_rm_result.rc == 0
   failed_when: host_rm_result.rc != 0 and ('Not allowed to remove' in (host_rm_result.stderr|default('')) )
-  ignore_errors: yes
+  ignore_errors: no
