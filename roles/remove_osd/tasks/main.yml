@@ -51,7 +51,7 @@
   loop: "{{ osds_to_remove }}"
   loop_control:
     label: "OSD {{ item }}"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Zap disks after removing their OSDs
   shell: "ceph orch device zap {{ ceph_host_to_remove }} {{ item.path }} --force"
@@ -59,11 +59,11 @@
   loop_control:
     label: "{{ item.path }}"
   when: item.path is defined
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Drain host
   shell: "ceph orch host drain {{ ceph_host_to_remove }} --force"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Wait until host has zero active daemons
   shell: "ceph orch ps --format json"
@@ -78,14 +78,14 @@
 
 - name: Remove host from Ceph orchestrator
   shell: "ceph orch host rm {{ ceph_host_to_remove }} --force"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Final cleanup on the removed host
   shell: |
     systemctl stop ceph-* || true
     rm -rf /var/lib/ceph/* /etc/ceph/* || true
   delegate_to: "{{ ceph_host_to_remove }}"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Final cluster status
   shell: ceph -s
