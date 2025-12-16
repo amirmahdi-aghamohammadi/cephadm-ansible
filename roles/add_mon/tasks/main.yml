@@ -11,19 +11,19 @@
   shell: >
     cat /etc/ceph/ceph.pub | ssh root@{{ ceph_host_to_add }}
     "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Add node to the cluster
   shell: ceph orch host add {{ ceph_host_to_add }} {{ hostvars[ceph_host_to_add].ansible_host | default(ceph_host_to_add) }}
   register: add_host
   failed_when: add_host.rc != 0 and 'already exists' not in add_host.stdout
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Add label mons
   shell: ceph orch host label add {{ ceph_host_to_add }} mons
   register: add_label
   failed_when: add_label.rc != 0 and 'already has label' not in add_label.stdout
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: List hostnames of current active mons
   shell: ceph orch ps --daemon-type mon --format json | jq -r '.[].hostname' | sort | tr '\n' ' '
