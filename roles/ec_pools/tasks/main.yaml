@@ -59,8 +59,3 @@
   run_once: true
   when: rgw_ec_pool is defined
   ignore_errors: no
-
-#- name: Set default RGW EC data pool
-#  shell: cephadm shell -- ceph config set global rgw_default_data_pool {{ rgw_ec_pool }}
-#  run_once: true
-#  when: enable_rgw_ec_default | bool
