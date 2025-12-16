@@ -1,7 +1,7 @@
 ---
 - name: Load group_vars
   include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Ensure ceph_host_to_remove and cephfs_name are defined
   assert:
@@ -13,7 +13,7 @@
 - name: Initial health check (at least able to talk to cluster)
   shell: ceph -s
   register: health_check
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Get current MDS hostnames for the filesystem
   shell: ceph orch ps --service-name mds.{{ cephfs_name }} --format json | jq -r '.[].hostname' | sort
@@ -54,11 +54,11 @@
 
 - name: Add _no_schedule label
   command: ceph orch host label add {{ ceph_host_to_remove }} _no_schedule
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Drain all daemons from host
   command: ceph orch host drain {{ ceph_host_to_remove }} --force
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Wait until no daemons remain on host
   shell: ceph orch ps --hostname {{ ceph_host_to_remove }} --format json | jq '. | length'
@@ -66,31 +66,31 @@
   until: daemons_left.stdout | int == 0
   retries: 60
   delay: 8
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Remove host from orchestrator
   command: ceph orch host rm {{ ceph_host_to_remove }} --force
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Remove _no_schedule label (cleanup)
   command: ceph orch host label rm {{ ceph_host_to_remove }} _no_schedule
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Remove mds label (if exists)
   shell: ceph orch host label rm {{ ceph_host_to_remove }} mds
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Stop and disable MDS service on node (if any remnants)
   shell: systemctl stop ceph-mds@* || true
   delegate_to: "{{ ceph_host_to_remove }}"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Remove MDS data directory
   file:
     path: /var/lib/ceph/mds/ceph-{{ cephfs_name }}-*
     state: absent
   delegate_to: "{{ ceph_host_to_remove }}"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Fully clean Ceph on removed node
   shell: |
@@ -98,7 +98,7 @@
     systemctl disable ceph.target || true
     rm -rf /var/lib/ceph/* /etc/ceph/ceph.* || true
   delegate_to: "{{ ceph_host_to_remove }}"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Final cluster status for MDS
   shell: |
