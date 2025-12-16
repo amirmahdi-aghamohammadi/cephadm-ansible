@@ -4,21 +4,21 @@
 
 - name: Copy SSH key from bootstrap to {{ ceph_host_to_add }}
   ansible.builtin.shell: cat /etc/ceph/ceph.pub | ssh root@{{ ceph_host_to_add }} "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Add {{ ceph_host_to_add }} node to Ceph cluster if not already added
   ansible.builtin.shell: >
     ceph orch host add {{ ceph_host_to_add }} {{ hostvars[ceph_host_to_add]['ansible_host'] }}
   register: add_host_result
   changed_when: "'already exists' not in add_host_result.stdout"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Add label osds to {{ ceph_host_to_add }} node if missing
   ansible.builtin.shell: >
     ceph orch host label add {{ ceph_host_to_add }} osds
   register: add_label_result
   changed_when: "'already has label' not in add_label_result.stdout"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Deploy OSDs on all available devices
   ansible.builtin.shell: >
