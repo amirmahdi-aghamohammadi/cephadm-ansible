@@ -13,7 +13,7 @@
   register: current_mgr_hosts
   changed_when: false
 
-- name: Fail if less than 3 MGRs (prevent quorum loss)
+- name: Fail if less than 3 MGRs
   fail:
     msg: |
       Only {{ current_mgr_hosts.stdout_lines | length }} MGR(s) running.
@@ -26,18 +26,18 @@
     msg: "Node {{ ceph_host_to_remove }} has no active MGR daemon!"
   when: ceph_host_to_remove not in current_mgr_hosts.stdout_lines
 
-- name: Build final MGR placement (explicit host list)
+- name: Build final MGR placement
   set_fact:
     final_mgr_placement: "{{ current_mgr_hosts.stdout_lines | difference([ceph_host_to_remove]) | join(' ') }}"
 
 - debug:
     msg: "Final MGR placement will be: {{ final_mgr_placement }}"
 
-- name: Apply clean MGR placement (explicit hosts - fixes Squid bug)
+- name: Apply clean MGR placement
   shell: ceph orch apply mgr --placement="{{ final_mgr_placement }}"
   register: apply_result
 
-- name: Force MGR failover to clear cache and apply new spec (Squid 19.2.x fix)
+- name: Force MGR failover to clear cache and apply new spec
   shell: ceph mgr fail $(ceph mgr dump -f json | jq -r .active_name)
   ignore_errors: no
 
