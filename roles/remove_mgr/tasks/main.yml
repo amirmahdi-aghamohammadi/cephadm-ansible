@@ -1,7 +1,7 @@
 ---
 - name: Load group_vars
   include_vars: "{{ playbook_dir }}/../group_vars/all.yml"
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Ensure ceph_host_to_remove is defined
   assert:
