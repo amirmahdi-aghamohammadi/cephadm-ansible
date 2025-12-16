@@ -51,11 +51,11 @@
 
 - name: Add _no_schedule label
   command: ceph orch host label add {{ ceph_host_to_remove }} _no_schedule
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Drain all daemons from host
   command: ceph orch host drain {{ ceph_host_to_remove }} --force
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Wait until no daemons remain on host
   shell: ceph orch ps --hostname {{ ceph_host_to_remove }} --format json | jq '. | length'
@@ -66,11 +66,11 @@
 
 - name: Remove host from orchestrator
   command: ceph orch host rm {{ ceph_host_to_remove }} --force
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Remove _no_schedule label (cleanup)
   command: ceph orch host label rm {{ ceph_host_to_remove }} _no_schedule
-  ignore_errors: yes
+  ignore_errors: no
 
 - name: Final cluster status
   shell: |
